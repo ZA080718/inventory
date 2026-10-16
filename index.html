@@ -1883,8 +1883,18 @@ function cloudReady(){ return !!(cloud.gist && cloud.token); }
 function normGist(v){
   const s = String(v == null ? '' : v).trim();
   if(!s) return '';
+  const hex = s.match(/[0-9a-fA-F]{32}/);          // Gist ID 是 32 位字符，优先整串提取
+  if(hex) return hex[0];
   const seg = s.split(/[\/#?\s]/).filter(Boolean).pop() || '';
   return seg.replace(/[^0-9A-Za-z]/g, '');
+}
+/** 判断输入是不是「某一条 Gist」——常见错误是粘了 Gist 列表页或个人主页 */
+function gistBad(v){
+  const s = String(v == null ? '' : v).trim();
+  if(!s) return true;
+  if(/[0-9a-fA-F]{32}/.test(s)) return false;      // 带 32 位 ID → 正常
+  if(/gist\.github\.com/i.test(s)) return true;    // 是 gist 网址但没带 ID → 粘的是列表页
+  return /^[A-Za-z0-9_-]{1,39}$/.test(s);          // 只填了用户名，或 ID 写得不完整
 }
 function ghHeaders(){
   return {
@@ -1934,14 +1944,21 @@ async function cloudFetchState(){
   try{ meta = JSON.parse(await fileText(metaF)); }catch(e){ meta = null; }
   if(!meta || typeof meta !== 'object') throw new Error('云端数据损坏：meta.json 无法解析。');
   const n = Number(meta.parts) || 0;
+  if(n < 1) return { empty:true };      // 新建 Gist 里的占位 meta.json（如 {}）→ 视为还没有数据
   let s = '';
   for(let i=1; i<=n; i++){
     const nm = 'p' + String(i).padStart(3,'0') + '.json';
     const f = files[nm];
     if(!f) throw new Error('云端数据不完整：缺少分片 ' + nm + '（共 ' + n + ' 片）。');
-    s += JSON.parse(await fileText(f));
+    let chunk = null;
+    try{ chunk = JSON.parse(await fileText(f)); }catch(e){ chunk = null; }
+    if(typeof chunk !== 'string') throw new Error('云端数据损坏：分片 ' + nm + ' 无法解析（可点「立即推送」用本机数据覆盖云端）。');
+    s += chunk;
   }
-  const d = normalizeState(JSON.parse(s));
+  let parsed = null;
+  try{ parsed = JSON.parse(s); }catch(e){ parsed = null; }
+  if(!parsed) throw new Error('云端数据损坏：内容无法解析（可点「立即推送」用本机数据覆盖云端）。');
+  const d = normalizeState(parsed);
   if(!d) throw new Error('云端数据无法识别（结构不合法）。');
   return { state:d, savedAt: Number(meta.savedAt) || 0, parts:n };
 }
@@ -2050,10 +2067,12 @@ document.getElementById('btnCloud').addEventListener('click', ()=>{
 document.getElementById('clSave').addEventListener('click', async ()=>{
   const err = document.getElementById('clErr');
   const btn = document.getElementById('clSave');
-  const gist  = normGist(document.getElementById('clGist').value);
+  const raw   = document.getElementById('clGist').value;
+  const gist  = normGist(raw);
   const token = document.getElementById('clToken').value.trim();
   err.textContent = '';
   if(!gist)  return err.textContent = '请填写 Gist ID 或 Gist 网址。';
+  if(gistBad(raw)) return err.textContent = '这串不是某一条 Gist 的地址：请在 Gist 列表里点进那条 meta.json，复制地址栏里结尾带 32 位字符的完整网址（形如 https://gist.github.com/用户名/8f3c0a1b2d4e5f678901234567890abc）。';
   if(!token) return err.textContent = '请填写 GitHub 令牌。';
   cloud.gist = gist; cloud.token = token; cloudSaveCfg();
   btn.disabled = true; btn.textContent = '连接中…';
