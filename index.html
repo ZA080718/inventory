@@ -388,6 +388,8 @@ dialog[open]{display:flex;flex-direction:column;max-height:92vh}
           <tr>
             <th class="c">状态</th>
             <th>商品</th>
+            <th class="c">图片</th>
+            <th>采购链接</th>
             <th class="r">待采购数量</th>
             <th>期望到货日期</th>
             <th>创建日期</th>
@@ -1157,6 +1159,12 @@ function renderPurchases(){
       tag = '<span class="tag buy"><i class="dot"></i>待采购</span>';
     }
     const prod = b.code ? state.products.find(p=>p.code === b.code) : null;
+    const imgCell = (prod && prod.image)                        // 图片与采购链接都按商品编码实时取
+      ? '<img class="thumb sm" src="'+prod.image+'" data-bimg="'+esc(b.code)+'" alt="'+esc(b.name)+'" title="点击查看大图">'
+      : '<div class="thumb sm ph">无图</div>';
+    const linkCell = (prod && prod.link)
+      ? '<a class="plink" href="'+esc(prod.link)+'" target="_blank" rel="noopener" title="'+esc(prod.link)+'">'+esc(linkHost(prod.link))+' ↗</a>'
+      : '<span class="muted">—</span>';
     const ops = [];
     if(b.stocked){
       ops.push('<button class="mini" data-buy-act="unin" data-id="'+b.id+'">撤销入库</button>');
@@ -1170,6 +1178,8 @@ function renderPurchases(){
     return '<tr>'
       +'<td class="c">'+tag+'</td>'
       +'<td>'+(b.code ? '<span class="code">'+esc(b.code)+'</span> ' : '')+esc(b.name)+(b.code && !prod ? ' <span class="muted">(商品已删除)</span>' : '')+'</td>'
+      +'<td class="c">'+imgCell+'</td>'
+      +'<td>'+linkCell+'</td>'
       +'<td class="r"><span class="qty num">'+fmtQty(b.qty,dec)+'<span class="u">'+esc(b.unit)+'</span></span></td>'
       +'<td><span class="time full"'+planStyle+'>'+ymdCn(b.plan)+'</span> <span class="muted">'+planHint(b.plan, b.done || b.stocked)+'</span></td>'
       +'<td><span class="time muted">'+ymdCn(b.created)+'</span></td>'
@@ -1294,6 +1304,16 @@ document.getElementById('byOk').addEventListener('click', ()=>{
   save(); render(); dlgBuy.close();
 });
 document.getElementById('buyBody').addEventListener('click', e=>{
+  const bimg = e.target.closest('img[data-bimg]');
+  if(bimg){                                    // 待采购清单里的商品缩略图 → 点开看大图
+    const p = state.products.find(x=>x.code === bimg.dataset.bimg);
+    if(p && p.image){
+      document.getElementById('bigImg').src = p.image;
+      document.getElementById('bigCap').textContent = p.code+' · '+p.name+'  ['+p.spec+']';
+      dlgImg.showModal();
+    }
+    return;
+  }
   const b = e.target.closest('button[data-buy-act]');
   if(!b) return;
   const id = b.dataset.id, act = b.dataset.buyAct;
