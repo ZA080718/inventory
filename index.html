@@ -1946,11 +1946,11 @@ async function ghGet(){
   }
   return await r.json();
 }
-/** 读某个 Gist 文件的完整文本（超过 1MB 时 API 会截断，改用 raw_url） */
+/** 读某个 Gist 文件的完整文本（被截断时改用 raw_url 拉完整内容） */
 async function fileText(f){
-  if(typeof f.content === 'string' && (!f.truncated || f.content)) return f.content;
+  if(!f.truncated && typeof f.content === 'string') return f.content;
   if(!f.raw_url) throw new Error('云端文件不可读取（内容被截断且没有下载地址）。');
-  const r = await fetch(f.raw_url, { headers:{ 'Authorization':'Bearer ' + cloud.token }, cache:'no-store' });
+  const r = await fetch(f.raw_url, { cache:'no-store' });   // raw 地址自带访问凭据，不加 Authorization 避免预检失败
   if(!r.ok) throw new Error('读取云端分片失败（HTTP ' + r.status + '）。');
   return await r.text();
 }
@@ -1972,6 +1972,9 @@ async function cloudFetchState(){
     if(!f) throw new Error('云端数据不完整：缺少分片 ' + nm + '（共 ' + n + ' 片）。');
     let chunk = null;
     try{ chunk = JSON.parse(await fileText(f)); }catch(e){ chunk = null; }
+    if(typeof chunk !== 'string' && f.raw_url){          // 保险：inline 内容解析失败时，再试一次 raw 完整地址
+      try{ const rr = await fetch(f.raw_url, { cache:'no-store' }); if(rr.ok) chunk = JSON.parse(await rr.text()); }catch(e){ chunk = null; }
+    }
     if(typeof chunk !== 'string') throw new Error('云端数据损坏：分片 ' + nm + ' 无法解析（可点「立即推送」用本机数据覆盖云端）。');
     s += chunk;
   }
